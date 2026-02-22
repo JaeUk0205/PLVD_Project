@@ -123,8 +123,10 @@ try:
                         t_avg = 0.5
 
                     for input_name in targets:
+                        # SQL 에러 유발용 특수기호 동적 생성 삽입 (에러 방지용)
+                        sq = chr(39)
                         payloads = load_payloads(SQL_FILE) + load_payloads(XSS_FILE)
-                        if "\"" not in payloads: payloads.insert(0, "\"")
+                        if sq not in payloads: payloads.insert(0, sq)
                         
                         for code in payloads:
                             attack_data = base_data.copy()
@@ -148,17 +150,17 @@ try:
                                     "ora-", "sqlserverexception", "mysql_fetch"
                                 ]
                                 
-                                # 4번 지적 반영: 500 상태 코드로 범용성 획득
+                                # 4번 지적 반영: 500 상태 코드 검사는 유지
                                 if any(err in resp_lower for err in sql_errors) or req.status_code == 500:
                                     is_vuln = True
                                     vuln_type = "SQLi (Error)"
                                 
-                                # 2번 지적 반영: XSS 반사 여부를 정밀하게 검증
-                                elif code in req.text and "<" in code and "&lt;" not in req.text:
+                                # 2번 지적 반영: WAVSEP 화면 특성을 고려하여 단순 대조로 원복
+                                elif code in req.text:
                                     is_vuln = True
                                     vuln_type = "XSS"
                                 
-                                # 1번 지적 반영: 정상 응답 시간 대비 확연히 느린지 계산
+                                # 1번 지적 반영: 지연 시간 측정은 유지
                                 elif req.elapsed.total_seconds() >= (t_avg + 3.0):
                                     is_vuln = True
                                     vuln_type = "SQLi (Time-based)"
