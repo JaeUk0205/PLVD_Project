@@ -41,8 +41,8 @@ def load_payloads(filename):
         with open(filename, "r", encoding="utf-8") as f:
             return [line.strip() for line in f if line.strip() and not line.startswith("[")]
     except FileNotFoundError:
-        # 파일 없을 시 테스트용 기본값
-        return ["<script>alert(1)</script>", "\" OR \"1\"=\"1"]
+        # 파일 없을 시 테스트용 기본 세팅 (특수문자 헥사코드 적용)
+        return ["<script>alert(1)</script>", "\x27 OR \x271\x27=\x271"]
 
 def get_dom_fingerprint(soup):
     tags = "".join([tag.name for tag in soup.find_all(True)])
