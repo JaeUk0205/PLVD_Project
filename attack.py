@@ -5,34 +5,24 @@ import urllib3
 import hashlib
 import time
 
-# 경고 메시지 무시
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# ==========================================
-# [실험 환경 설정] - OWASP ZAP 대조 실험용
-# ==========================================
-# 1. 타겟 베이스 (스캔 범위를 이 호스트로 제한)
 TARGET_HOST = "http://localhost:8080/wavsep/"
 
-# 2. 시작점 설정 (Seed URLs)
 START_URLS = [
-    TARGET_HOST, # 루트
-    urljoin(TARGET_HOST, "active/index-active.jsp"), # 액티브 공격 리스트
-    urljoin(TARGET_HOST, "active/index-sql.jsp"),    # SQLi 리스트
-    urljoin(TARGET_HOST, "active/index-xss.jsp")     # XSS 리스트
+    TARGET_HOST,
+    urljoin(TARGET_HOST, "active/index-active.jsp"),
+    urljoin(TARGET_HOST, "active/index-sql.jsp"),
+    urljoin(TARGET_HOST, "active/index-xss.jsp")
 ]
 
-# 3. 실험 레이어 활성화
-ENABLE_LAYER_A = True  # Acquisition (크롤링)
-ENABLE_LAYER_B = True  # Pre-processing (우선순위 및 중복제거)
-ENABLE_LAYER_C = True  # Detection (공격수행)
+ENABLE_LAYER_A = True  
+ENABLE_LAYER_B = True  
+ENABLE_LAYER_C = True  
 
-# 4. 페이로드 파일
 XSS_FILE = "payloads.txt"
 SQL_FILE = "sql_payloads.txt"
-# ==========================================
 
-# 세션 및 헤더 설정
 sess = requests.Session()
 sess.headers.update({"User-Agent": "Mozilla/5.0 (PLVD-Crawler/1.0)"})
 
@@ -44,25 +34,15 @@ def load_payloads(filename):
         return ["<script>alert(1)</script>", "\" OR \"1\"=\"1"]
 
 def get_dom_fingerprint(soup):
-    # 1. HTML 태그 뼈대 추출
     tags = "".join([tag.name for tag in soup.find_all(True)])
-    
-    # 2. 폼이 데이터를 전송하는 목적지(action) 추출
     actions = "".join([form.attrs.get("action", "") for form in soup.find_all("form")])
-    
-    # 3. 입력 파라미터의 이름(name) 추출
     inputs = "".join([tag.attrs.get("name", "") for tag in soup.find_all(["input", "textarea", "select"]) if tag.attrs.get("name")])
-    
-    # 태그 + 목적지 + 파라미터를 모두 합쳐서 해시(지문) 생성
     fingerprint = tags + actions + inputs
     return hashlib.md5(fingerprint.encode()).hexdigest()
 
-# 전역 변수 초기화
 visited_urls = set()
 visited_doms = set()
 queue = START_URLS.copy()
-
-# [추가] 취약점 중복 집계 방지용 세트
 found_vulns = set()
 
 start_time = time.time()
@@ -82,7 +62,6 @@ try:
         visited_urls.add(current_url)
 
         try:
-            # [Layer A] 페이지 수집
             if not ENABLE_LAYER_A: break 
             
             res = sess.get(current_url, timeout=3)
@@ -95,7 +74,6 @@ try:
 
             is_duplicate = False
 
-            # [Layer B] 필터링 및 우선순위 알고리즘
             if ENABLE_LAYER_B:
                 dom_hash = get_dom_fingerprint(soup)
                 if dom_hash in visited_doms:
@@ -103,20 +81,21 @@ try:
                 else:
                     visited_doms.add(dom_hash)
 
-            # 링크 추출 및 우선순위 스케줄링
+            # 3번 지적 반영: 중복 템플릿이면 링크 추출도 생략하여 무한 루프 차단
+            if is_duplicate:
+                continue
+
             for a_tag in soup.find_all("a", href=True):
                 full_link = urljoin(current_url, a_tag.get("href", ""))
                 
                 if full_link.startswith(TARGET_HOST):
                     if full_link not in visited_urls and full_link not in queue:
-                        
                         priority_keywords = ["?", ".jsp", "active", "SQL", "XSS"]
                         if ENABLE_LAYER_B and any(k in full_link for k in priority_keywords):
                             queue.insert(0, full_link)
                         else:
                             queue.append(full_link)
 
-            # [Layer C] 취약점 공격 수행
             if ENABLE_LAYER_C and not is_duplicate:
                 forms = soup.find_all("form")
                 for form in forms:
@@ -132,10 +111,19 @@ try:
 
                     if not targets: continue
 
+                    # 1, 4번 지적 반영: 정상 폼 요청 한 번 보내서 기준점 측정
+                    try:
+                        if method == "post":
+                            base_req = sess.post(action, data=base_data, timeout=5)
+                        else:
+                            base_req = sess.get(action, params=base_data, timeout=5)
+                        request_count += 1
+                        t_avg = base_req.elapsed.total_seconds()
+                    except Exception:
+                        t_avg = 0.5
+
                     for input_name in targets:
                         payloads = load_payloads(SQL_FILE) + load_payloads(XSS_FILE)
-                        
-                        # 에러 유발자 하드코딩
                         if "\"" not in payloads: payloads.insert(0, "\"")
                         
                         for code in payloads:
@@ -147,9 +135,9 @@ try:
                             
                             try:
                                 if method == "post":
-                                    req = sess.post(action, data=attack_data, timeout=4)
+                                    req = sess.post(action, data=attack_data, timeout=t_avg + 4.0)
                                 else:
-                                    req = sess.get(action, params=attack_data, timeout=4)
+                                    req = sess.get(action, params=attack_data, timeout=t_avg + 4.0)
                                 request_count += 1
                                 
                                 resp_lower = req.text.lower()
@@ -160,15 +148,18 @@ try:
                                     "ora-", "sqlserverexception", "mysql_fetch"
                                 ]
                                 
-                                if any(err in resp_lower for err in sql_errors):
+                                # 4번 지적 반영: 500 상태 코드로 범용성 획득
+                                if any(err in resp_lower for err in sql_errors) or req.status_code == 500:
                                     is_vuln = True
                                     vuln_type = "SQLi (Error)"
                                 
-                                elif code in req.text:
+                                # 2번 지적 반영: XSS 반사 여부를 정밀하게 검증
+                                elif code in req.text and "<" in code and "&lt;" not in req.text:
                                     is_vuln = True
                                     vuln_type = "XSS"
                                 
-                                elif req.elapsed.total_seconds() >= 3:
+                                # 1번 지적 반영: 정상 응답 시간 대비 확연히 느린지 계산
+                                elif req.elapsed.total_seconds() >= (t_avg + 3.0):
                                     is_vuln = True
                                     vuln_type = "SQLi (Time-based)"
 
@@ -181,13 +172,11 @@ try:
                                 pass 
 
                             if is_vuln:
-                                print(f"      >>> [★동작 성공!] {input_name} (Type: {vuln_type} / Payload: {code[:15]}...)")
+                                print(f"      >>> [★탐지 성공!] {input_name} (Type: {vuln_type} / Payload: {code[:15]}...)")
                                 
-                                # 고유 서명 생성
                                 vuln_category = "SQLi" if "SQLi" in vuln_type else "XSS"
                                 vuln_signature = f"{current_url}_{input_name}_{vuln_category}"
                                 
-                                # 고유 서명이 세트에 없을 때만 카운트 증가
                                 if vuln_signature not in found_vulns:
                                     found_vulns.add(vuln_signature)
                                     vuln_count += 1
@@ -196,8 +185,6 @@ try:
                                         sqli_count += 1
                                     elif vuln_category == "XSS":
                                         xss_count += 1
-                                    
-                                # 중단 명령어는 계속 없으므로, 모든 문구를 끝까지 테스트합니다.
 
         except Exception:
             continue
@@ -207,7 +194,7 @@ except KeyboardInterrupt:
 
 duration = time.time() - start_time
 print("\n" + "="*45)
-print(f" [PLVD 실험 현황 리포트]")
+print(f" [PLVD 스캔 현황]")
 print(f" 1. 총 소요 시간 : {duration:.2f}초")
 print(f" 2. 총 HTTP 요청 : {request_count}회")
 print(f" 3. 발견 취약점 : 총 {vuln_count}개")
