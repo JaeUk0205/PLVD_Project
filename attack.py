@@ -106,7 +106,7 @@ try:
                         else:
                             queue.append(full_link)
 
-            # [Layer C] 취약점 공격 수행
+           # [Layer C] 취약점 공격 수행
             if ENABLE_LAYER_C and not is_duplicate:
                 forms = soup.find_all("form")
                 for form in forms:
@@ -123,50 +123,68 @@ try:
                     if not targets: continue
 
                     for input_name in targets:
-                        # SQL이랑 XSS 페이로드를 합쳐서 로드
                         payloads = load_payloads(SQL_FILE) + load_payloads(XSS_FILE)
+                        # 페이로드 파일이 없거나 부실할 경우를 대비한 하드코딩 에러 유발자 추가
+                        if "'" not in payloads: payloads.insert(0, "'")
+                        
                         for code in payloads:
                             attack_data = base_data.copy()
                             attack_data[input_name] = code
                             
+                            is_vuln = False
+                            vuln_type = ""
+                            
                             try:
+                                # 타임아웃을 4초로 늘려, 서버 지연을 조금 더 기다려줍니다.
                                 if method == "post":
-                                    req = sess.post(action, data=attack_data, timeout=3)
+                                    req = sess.post(action, data=attack_data, timeout=4)
                                 else:
-                                    req = sess.get(action, params=attack_data, timeout=3)
+                                    req = sess.get(action, params=attack_data, timeout=4)
                                 request_count += 1
                                 
-                                is_vuln = False
-                                vuln_type = "" # 취약점 유형 저장 변수
-                                response_text = req.text.lower()
-
-                                # 1. SQL 에러 기반 탐지
-                                if "sql" in response_text or "syntax" in response_text or "mysql" in response_text:
+                                resp_lower = req.text.lower()
+                                
+                                # 1. SQL 에러 기반 탐지 (WAVSEP 호환성 대폭 강화)
+                                sql_errors = [
+                                    "sql syntax", "java.sql.sqlexception", 
+                                    "com.mysql.jdbc", "valid mysql result", 
+                                    "ora-", "sqlserverexception", "mysql_fetch"
+                                ]
+                                
+                                if any(err in resp_lower for err in sql_errors):
                                     is_vuln = True
-                                    vuln_type = "SQLi"
+                                    vuln_type = "SQLi (Error)"
                                 
                                 # 2. XSS 반사 기반 탐지
                                 elif code in req.text:
                                     is_vuln = True
                                     vuln_type = "XSS"
                                 
-                                # 3. 시간 기반 탐지 (3초 이상) -> Blind SQLi로 간주
+                                # 3. 시간 기반 탐지 (정상 응답이 왔으나 3초 이상 걸린 경우)
                                 elif req.elapsed.total_seconds() >= 3:
                                     is_vuln = True
-                                    vuln_type = "SQLi"
+                                    vuln_type = "SQLi (Time-based)"
 
-                                if is_vuln:
-                                    print(f"      >>> [★취약점 발견!] {input_name} (Type: {vuln_type} / Payload: {code[:15]}...)")
-                                    vuln_count += 1
-                                    
-                                    # [추가] 유형별 카운트 증가
-                                    if vuln_type == "SQLi":
-                                        sqli_count += 1
-                                    elif vuln_type == "XSS":
-                                        xss_count += 1
-                                    
+                            except requests.exceptions.Timeout:
+                                # [핵심 수정] 타임아웃 에러 발생 = 서버가 페이로드 때문에 지연됨 = Time-based SQLi
+                                is_vuln = True
+                                vuln_type = "SQLi (Timeout)"
+                                request_count += 1
+                            
                             except Exception:
-                                pass
+                                pass # Timeout 이외의 진짜 통신 에러는 무시
+
+                            # 취약점 발견 시 처리
+                            if is_vuln:
+                                print(f"      >>> [★취약점 발견!] {input_name} (Type: {vuln_type} / Payload: {code[:15]}...)")
+                                vuln_count += 1
+                                
+                                if "SQLi" in vuln_type:
+                                    sqli_count += 1
+                                elif vuln_type == "XSS":
+                                    xss_count += 1
+                                    
+                                break # 해당 폼 필드에서는 취약점이 확인되었으니 다음 필드로 넘어감
 
         except Exception as e:
             continue
@@ -174,10 +192,10 @@ try:
 except KeyboardInterrupt:
     print("\n[!] 사용자 중단")
 
-# 산출 리포트 출력
+# 결과 출력
 duration = time.time() - start_time
 print("\n" + "="*45)
-print(f" [PLVD 실험 산출 리포트]")
+print(f" [PLVD 실험 결과 리포트]")
 print(f" 1. 총 소요 시간 : {duration:.2f}초")
 print(f" 2. 총 HTTP 요청 : {request_count}회")
 print(f" 3. 발견 취약점 : 총 {vuln_count}개")
