@@ -44,8 +44,18 @@ def load_payloads(filename):
         return ["<script>alert(1)</script>", "\" OR \"1\"=\"1"]
 
 def get_dom_fingerprint(soup):
+    # 1. HTML 태그 뼈대 추출
     tags = "".join([tag.name for tag in soup.find_all(True)])
-    return hashlib.md5(tags.encode()).hexdigest()
+    
+    # 2. 폼이 데이터를 전송하는 목적지(action) 추출
+    actions = "".join([form.attrs.get("action", "") for form in soup.find_all("form")])
+    
+    # 3. 입력 파라미터의 이름(name) 추출
+    inputs = "".join([tag.attrs.get("name", "") for tag in soup.find_all(["input", "textarea", "select"]) if tag.attrs.get("name")])
+    
+    # 태그 + 목적지 + 파라미터를 모두 합쳐서 해시(지문) 생성
+    fingerprint = tags + actions + inputs
+    return hashlib.md5(fingerprint.encode()).hexdigest()
 
 # 전역 변수 초기화
 visited_urls = set()
