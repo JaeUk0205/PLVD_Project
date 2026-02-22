@@ -124,8 +124,9 @@ try:
 
                     for input_name in targets:
                         payloads = load_payloads(SQL_FILE) + load_payloads(XSS_FILE)
+                        
                         # 페이로드 파일이 없거나 부실할 경우를 대비한 하드코딩 에러 유발자 추가
-                        if "'" not in payloads: payloads.insert(0, "'")
+                        if "\"" not in payloads: payloads.insert(0, "\"")
                         
                         for code in payloads:
                             attack_data = base_data.copy()
@@ -166,7 +167,7 @@ try:
                                     vuln_type = "SQLi (Time-based)"
 
                             except requests.exceptions.Timeout:
-                                # [핵심 수정] 타임아웃 에러 발생 = 서버가 페이로드 때문에 지연됨 = Time-based SQLi
+                                # 타임아웃 에러 발생 = 서버가 페이로드 때문에 지연됨 = Time-based SQLi
                                 is_vuln = True
                                 vuln_type = "SQLi (Timeout)"
                                 request_count += 1
@@ -184,7 +185,7 @@ try:
                                 elif vuln_type == "XSS":
                                     xss_count += 1
                                     
-                                break # 해당 폼 필드에서는 취약점이 확인되었으니 다음 필드로 넘어감
+                                # 기존에 있던 탈출 명령어를 지웠으므로, 다음 페이로드 검사로 계속 넘어갑니다.
 
         except Exception as e:
             continue
