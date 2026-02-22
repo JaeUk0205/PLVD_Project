@@ -24,7 +24,7 @@ START_URLS = [
 
 # 3. 실험 레이어 활성화
 ENABLE_LAYER_A = True  # Acquisition (크롤링)
-ENABLE_LAYER_B = True  # Pre-processing (우선순위 & 중복제거)
+ENABLE_LAYER_B = True  # Pre-processing (우선순위 및 중복제거)
 ENABLE_LAYER_C = True  # Detection (공격수행)
 
 # 4. 페이로드 파일
@@ -41,23 +41,24 @@ def load_payloads(filename):
         with open(filename, "r", encoding="utf-8") as f:
             return [line.strip() for line in f if line.strip() and not line.startswith("[")]
     except FileNotFoundError:
-        # 파일 없을 시 테스트용 기본 세팅 (특수문자 헥사코드 적용)
-        return ["<script>alert(1)</script>", "\x27 OR \x271\x27=\x271"]
+        return ["<script>alert(1)</script>", "\" OR \"1\"=\"1"]
 
 def get_dom_fingerprint(soup):
     tags = "".join([tag.name for tag in soup.find_all(True)])
-    actions = "".join([form.attrs.get("action", "") for form in soup.find_all("form")])
-    return hashlib.md5((tags + actions).encode()).hexdigest()
+    return hashlib.md5(tags.encode()).hexdigest()
 
 # 전역 변수 초기화
 visited_urls = set()
 visited_doms = set()
 queue = START_URLS.copy()
 
+# [추가] 취약점 중복 집계 방지용 세트
+found_vulns = set()
+
 start_time = time.time()
 vuln_count = 0
-sqli_count = 0  # [추가] SQLi 개수 카운터
-xss_count = 0   # [추가] XSS 개수 카운터
+sqli_count = 0 
+xss_count = 0  
 request_count = 0 
 
 print(f"[*] PLVD 실험 시작 | 타겟: {TARGET_HOST}")
@@ -94,19 +95,18 @@ try:
 
             # 링크 추출 및 우선순위 스케줄링
             for a_tag in soup.find_all("a", href=True):
-                full_link = urljoin(current_url, a_tag["href"])
+                full_link = urljoin(current_url, a_tag.get("href", ""))
                 
                 if full_link.startswith(TARGET_HOST):
                     if full_link not in visited_urls and full_link not in queue:
                         
-                        # === Layer B 핵심: 우선순위 판단 ===
                         priority_keywords = ["?", ".jsp", "active", "SQL", "XSS"]
                         if ENABLE_LAYER_B and any(k in full_link for k in priority_keywords):
                             queue.insert(0, full_link)
                         else:
                             queue.append(full_link)
 
-           # [Layer C] 취약점 공격 수행
+            # [Layer C] 취약점 공격 수행
             if ENABLE_LAYER_C and not is_duplicate:
                 forms = soup.find_all("form")
                 for form in forms:
@@ -125,7 +125,7 @@ try:
                     for input_name in targets:
                         payloads = load_payloads(SQL_FILE) + load_payloads(XSS_FILE)
                         
-                        # 페이로드 파일이 없거나 부실할 경우를 대비한 하드코딩 에러 유발자 추가
+                        # 에러 유발자 하드코딩
                         if "\"" not in payloads: payloads.insert(0, "\"")
                         
                         for code in payloads:
@@ -136,7 +136,6 @@ try:
                             vuln_type = ""
                             
                             try:
-                                # 타임아웃을 4초로 늘려, 서버 지연을 조금 더 기다려줍니다.
                                 if method == "post":
                                     req = sess.post(action, data=attack_data, timeout=4)
                                 else:
@@ -145,7 +144,6 @@ try:
                                 
                                 resp_lower = req.text.lower()
                                 
-                                # 1. SQL 에러 기반 탐지 (WAVSEP 호환성 대폭 강화)
                                 sql_errors = [
                                     "sql syntax", "java.sql.sqlexception", 
                                     "com.mysql.jdbc", "valid mysql result", 
@@ -156,47 +154,50 @@ try:
                                     is_vuln = True
                                     vuln_type = "SQLi (Error)"
                                 
-                                # 2. XSS 반사 기반 탐지
                                 elif code in req.text:
                                     is_vuln = True
                                     vuln_type = "XSS"
                                 
-                                # 3. 시간 기반 탐지 (정상 응답이 왔으나 3초 이상 걸린 경우)
                                 elif req.elapsed.total_seconds() >= 3:
                                     is_vuln = True
                                     vuln_type = "SQLi (Time-based)"
 
                             except requests.exceptions.Timeout:
-                                # 타임아웃 에러 발생 = 서버가 페이로드 때문에 지연됨 = Time-based SQLi
                                 is_vuln = True
                                 vuln_type = "SQLi (Timeout)"
                                 request_count += 1
                             
                             except Exception:
-                                pass # Timeout 이외의 진짜 통신 에러는 무시
+                                pass 
 
-                            # 취약점 발견 시 처리
                             if is_vuln:
-                                print(f"      >>> [★취약점 발견!] {input_name} (Type: {vuln_type} / Payload: {code[:15]}...)")
-                                vuln_count += 1
+                                print(f"      >>> [★동작 성공!] {input_name} (Type: {vuln_type} / Payload: {code[:15]}...)")
                                 
-                                if "SQLi" in vuln_type:
-                                    sqli_count += 1
-                                elif vuln_type == "XSS":
-                                    xss_count += 1
+                                # 고유 서명 생성
+                                vuln_category = "SQLi" if "SQLi" in vuln_type else "XSS"
+                                vuln_signature = f"{current_url}_{input_name}_{vuln_category}"
+                                
+                                # 고유 서명이 세트에 없을 때만 카운트 증가
+                                if vuln_signature not in found_vulns:
+                                    found_vulns.add(vuln_signature)
+                                    vuln_count += 1
                                     
-                                # 기존에 있던 탈출 명령어를 지웠으므로, 다음 페이로드 검사로 계속 넘어갑니다.
+                                    if vuln_category == "SQLi":
+                                        sqli_count += 1
+                                    elif vuln_category == "XSS":
+                                        xss_count += 1
+                                    
+                                # 중단 명령어는 계속 없으므로, 모든 문구를 끝까지 테스트합니다.
 
-        except Exception as e:
+        except Exception:
             continue
 
 except KeyboardInterrupt:
     print("\n[!] 사용자 중단")
 
-# 결과 출력
 duration = time.time() - start_time
 print("\n" + "="*45)
-print(f" [PLVD 실험 결과 리포트]")
+print(f" [PLVD 실험 현황 리포트]")
 print(f" 1. 총 소요 시간 : {duration:.2f}초")
 print(f" 2. 총 HTTP 요청 : {request_count}회")
 print(f" 3. 발견 취약점 : 총 {vuln_count}개")
