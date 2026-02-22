@@ -34,7 +34,7 @@ SQL_FILE = "sql_payloads.txt"
 
 # 세션 및 헤더 설정
 sess = requests.Session()
-sess.headers.update({'User-Agent': 'Mozilla/5.0 (PLVD-Crawler/1.0)'})
+sess.headers.update({"User-Agent": "Mozilla/5.0 (PLVD-Crawler/1.0)"})
 
 def load_payloads(filename):
     try:
@@ -42,11 +42,12 @@ def load_payloads(filename):
             return [line.strip() for line in f if line.strip() and not line.startswith("[")]
     except FileNotFoundError:
         # 파일 없을 시 테스트용 기본값
-        return ["<script>alert(1)</script>", "' OR '1'='1"]
+        return ["<script>alert(1)</script>", "\" OR \"1\"=\"1"]
 
 def get_dom_fingerprint(soup):
     tags = "".join([tag.name for tag in soup.find_all(True)])
-    return hashlib.md5(tags.encode()).hexdigest()
+    actions = "".join([form.attrs.get("action", "") for form in soup.find_all("form")])
+    return hashlib.md5((tags + actions).encode()).hexdigest()
 
 # 전역 변수 초기화
 visited_urls = set()
@@ -122,7 +123,7 @@ try:
                     if not targets: continue
 
                     for input_name in targets:
-                        # SQL과 XSS 페이로드를 합쳐서 로드
+                        # SQL이랑 XSS 페이로드를 합쳐서 로드
                         payloads = load_payloads(SQL_FILE) + load_payloads(XSS_FILE)
                         for code in payloads:
                             attack_data = base_data.copy()
@@ -137,9 +138,10 @@ try:
                                 
                                 is_vuln = False
                                 vuln_type = "" # 취약점 유형 저장 변수
+                                response_text = req.text.lower()
 
                                 # 1. SQL 에러 기반 탐지
-                                if "sql" in req.text.lower() and "syntax" in req.text.lower():
+                                if "sql" in response_text or "syntax" in response_text or "mysql" in response_text:
                                     is_vuln = True
                                     vuln_type = "SQLi"
                                 
@@ -162,9 +164,7 @@ try:
                                         sqli_count += 1
                                     elif vuln_type == "XSS":
                                         xss_count += 1
-                                        
-                                    break # 해당 필드는 취약점이 확인되었으므로 다음 필드로 넘어감
-
+                                    
                             except Exception:
                                 pass
 
@@ -174,10 +174,10 @@ try:
 except KeyboardInterrupt:
     print("\n[!] 사용자 중단")
 
-# 결과 출력
+# 산출 리포트 출력
 duration = time.time() - start_time
 print("\n" + "="*45)
-print(f" [PLVD 실험 결과 리포트]")
+print(f" [PLVD 실험 산출 리포트]")
 print(f" 1. 총 소요 시간 : {duration:.2f}초")
 print(f" 2. 총 HTTP 요청 : {request_count}회")
 print(f" 3. 발견 취약점 : 총 {vuln_count}개")
